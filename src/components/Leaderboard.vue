@@ -17,15 +17,16 @@ onMounted(async () => {
 });
 
 function formatTime(seconds) {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m}:${String(s).padStart(2, '0')}`;
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+
+  return `${minutes}:${String(remainingSeconds).padStart(2, '0')}`;
 }
 </script>
 
 <template>
   <div class="leaderboard">
-    <h3>Today's Top Players</h3>
+    <h3>Today's Ranking</h3>
     <div v-if="isLoading" class="loading">Loading scores...</div>
     <div v-else-if="scores.length === 0" class="empty">No one has solved today's puzzle yet. You can be the first!</div>
     <ul v-else class="score-list">

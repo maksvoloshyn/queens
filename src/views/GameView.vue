@@ -73,9 +73,9 @@ function saveUserSetup(e) {
       <div v-if="isSolved" class="success-message">
         <h2>Magnificent! 🎉</h2>
         <p>You solved today's puzzle in {{ formattedTime }}.</p>
+
+        <Leaderboard :dateString="dateString" />
       </div>
-      
-      <Leaderboard :dateString="dateString" />
     </div>
   </div>
 </template>
