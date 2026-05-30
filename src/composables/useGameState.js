@@ -105,6 +105,9 @@ export function useGameState(dateString, usernameRef) {
     if (cell.state === CELL_STATE.EMPTY) {
       cell.state = CELL_STATE.CROSS;
       processMove();
+    } else if (cell.state === CELL_STATE.CROSS) {
+      cell.state = CELL_STATE.EMPTY;
+      processMove();
     }
   }
 

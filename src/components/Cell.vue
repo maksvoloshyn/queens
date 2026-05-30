@@ -60,7 +60,7 @@ const borderStyle = computed(() => {
     class="cell" 
     :style="{ backgroundColor: bgColor, ...borderStyle }"
     :class="{ 'has-error': isError }"
-    @pointerdown.prevent="emit('cell-pointer-down')"
+    @pointerdown.prevent="emit('cell-pointer-down', $event)"
     @pointerenter.prevent="emit('cell-pointer-enter')"
   >
     <div v-if="state === 1" class="mark cross">✕</div>
@@ -99,7 +99,6 @@ const borderStyle = computed(() => {
 }
 
 .queen {
-  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
   font-size: calc(var(--cell-size) * 0.55);
 }
 

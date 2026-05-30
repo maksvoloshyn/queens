@@ -11,34 +11,59 @@ const emit = defineEmits(['update-cell', 'swipe-cell']);
 const isSwiping = ref(false);
 const lastSwipedCell = ref(null);
 
-function handlePointerDown(rowIndex, columnIndex) {
+const startX = ref(0);
+const startY = ref(0);
+const startRow = ref(null);
+const startCol = ref(null);
+const hasMoved = ref(false);
+
+function handlePointerDown(e, rowIndex, columnIndex) {
   isSwiping.value = true;
+  hasMoved.value = false;
+  startX.value = e.clientX;
+  startY.value = e.clientY;
+  startRow.value = rowIndex;
+  startCol.value = columnIndex;
   lastSwipedCell.value = `${rowIndex},${columnIndex}`;
-  emit('update-cell', rowIndex, columnIndex);
 }
 
 function handlePointerMove(e) {
   if (!isSwiping.value) return;
-  
+
+  const dist = Math.hypot(e.clientX - startX.value, e.clientY - startY.value);
+  if (!hasMoved.value && dist > 6) {
+    hasMoved.value = true;
+    emit('swipe-cell', startRow.value, startCol.value);
+  }
+
   const element = document.elementFromPoint(e.clientX, e.clientY);
   if (!element) return;
-  
+
   const cellEl = element.closest('[data-row]');
   if (cellEl) {
     const rowIndex = parseInt(cellEl.dataset.row, 10);
     const columnIndex = parseInt(cellEl.dataset.col, 10);
     const cellKey = `${rowIndex},${columnIndex}`;
-    
+
     if (lastSwipedCell.value !== cellKey) {
       lastSwipedCell.value = cellKey;
+      if (!hasMoved.value) {
+        hasMoved.value = true;
+        emit('swipe-cell', startRow.value, startCol.value);
+      }
       emit('swipe-cell', rowIndex, columnIndex);
     }
   }
 }
 
 function handlePointerUp() {
+  if (isSwiping.value && !hasMoved.value && startRow.value !== null && startCol.value !== null) {
+    emit('update-cell', startRow.value, startCol.value);
+  }
   isSwiping.value = false;
   lastSwipedCell.value = null;
+  startRow.value = null;
+  startCol.value = null;
 }
 </script>
 
@@ -62,7 +87,7 @@ function handlePointerUp() {
         :grid="grid"
         :row-index="rowIndex"
         :column-index="columnIndex"
-        @cell-pointer-down="handlePointerDown(rowIndex, columnIndex)"
+        @cell-pointer-down="handlePointerDown($event, rowIndex, columnIndex)"
       />
     </div>
   </div>
