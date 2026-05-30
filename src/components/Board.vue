@@ -59,6 +59,9 @@ function handlePointerUp() {
         :state="cell.state"
         :region-id="cell.regionId"
         :is-error="cell.isError"
+        :grid="grid"
+        :row-index="rowIndex"
+        :column-index="columnIndex"
         @cell-pointer-down="handlePointerDown(rowIndex, columnIndex)"
       />
     </div>
