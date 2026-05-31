@@ -10,11 +10,28 @@ export interface Puzzle {
   solution: SimpleQueenCoord[];
 }
 
-export function generatePuzzle(): Puzzle | null {
-  const queens = placeQueens();
+function createPRNG(seedString: string) {
+  // Simple hash function to convert string to a 32-bit integer seed
+  let seed = 0;
+  for (let i = 0; i < seedString.length; i++) {
+    seed = (seed * 31 + seedString.charCodeAt(i)) | 0;
+  }
+  
+  // Mulberry32 generator
+  return function() {
+    let t = seed += 0x6D2B79F5;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+export function generatePuzzle(seed?: string): Puzzle | null {
+  const random = seed ? createPRNG(seed) : Math.random;
+  const queens = placeQueens(random);
   if (!queens) return null;
 
-  const regions = growRegions(queens);
+  const regions = growRegions(queens, random);
   
   return {
     regions,
@@ -22,14 +39,14 @@ export function generatePuzzle(): Puzzle | null {
   };
 }
 
-function placeQueens(): SimpleQueenCoord[] | null {
+function placeQueens(random: () => number): SimpleQueenCoord[] | null {
   const queens: SimpleQueenCoord[] = [];
   
   function solve(rowIndex: number): boolean {
     if (rowIndex === MAX_BOARD_SIZE) return true;
     
     // shuffle columns to get random boards
-    const columns = Array.from({ length: MAX_BOARD_SIZE }, (_, i) => i).sort(() => Math.random() - 0.5);
+    const columns = Array.from({ length: MAX_BOARD_SIZE }, (_, i) => i).sort(() => random() - 0.5);
     
     for (const columnIndex of columns) {
       if (isValidPlacement(rowIndex, columnIndex, queens)) {
@@ -59,7 +76,7 @@ interface GrowQueueItem {
   regionId: number;
 }
 
-function growRegions(queens: SimpleQueenCoord[]): number[][] {
+function growRegions(queens: SimpleQueenCoord[], random: () => number): number[][] {
   const grid: number[][] = Array(MAX_BOARD_SIZE).fill(0).map(() => Array(MAX_BOARD_SIZE).fill(-1));
   const queue: GrowQueueItem[] = [];
   
@@ -69,12 +86,12 @@ function growRegions(queens: SimpleQueenCoord[]): number[][] {
   });
   
   while (queue.length > 0) {
-    const queueIndex = Math.floor(Math.random() * queue.length);
+    const queueIndex = Math.floor(random() * queue.length);
     const current = queue[queueIndex];
     queue.splice(queueIndex, 1);
     
     const directions: [number, number][] = [[0, 1], [1, 0], [0, -1], [-1, 0]];
-    directions.sort(() => Math.random() - 0.5);
+    directions.sort(() => random() - 0.5);
     
     for (const [dRow, dCol] of directions) {
       const neighborRow = current.rowIndex + dRow;
@@ -99,3 +116,4 @@ function growRegions(queens: SimpleQueenCoord[]): number[][] {
   
   return grid;
 }
+
