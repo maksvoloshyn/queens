@@ -1,10 +1,35 @@
 import { db } from './firebase';
 import { doc, setDoc, getDoc, collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
+import type { Board } from '../engine/gameLogic';
 
 const USE_LOCAL = import.meta.env.VITE_USE_LOCAL_EMULATOR === 'true';
 
+export interface PuzzleData {
+  regions: number[][];
+  solution?: { rowIndex: number; columnIndex: number }[];
+}
+
+export interface ProgressData {
+  grid: Board;
+  timerSeconds: number;
+  isSolved: boolean;
+}
+
+export interface ProgressPayload extends ProgressData {
+  username: string;
+  dateString: string;
+  lastUpdated: string;
+}
+
+export interface LeaderboardScore {
+  username: string;
+  dateString: string;
+  timeSeconds: number;
+  timestamp: string;
+}
+
 // Fetch the daily puzzle from Firestore or LocalStorage
-export async function getDailyPuzzle(dateString) {
+export async function getDailyPuzzle(dateString: string): Promise<PuzzleData | null> {
   if (USE_LOCAL) {
     const data = localStorage.getItem(`puzzle_${dateString}`);
     return data ? JSON.parse(data) : null;
@@ -14,7 +39,7 @@ export async function getDailyPuzzle(dateString) {
     const docRef = doc(db, 'puzzles', dateString);
     const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
-      return docSnap.data();
+      return docSnap.data() as PuzzleData;
     }
     return null;
   } catch (error) {
@@ -24,7 +49,7 @@ export async function getDailyPuzzle(dateString) {
 }
 
 // Admin: Save a puzzle to Firestore or LocalStorage
-export async function savePuzzle(dateString, puzzleData) {
+export async function savePuzzle(dateString: string, puzzleData: PuzzleData): Promise<boolean> {
   if (USE_LOCAL) {
     localStorage.setItem(`puzzle_${dateString}`, JSON.stringify(puzzleData));
     return true;
@@ -40,11 +65,15 @@ export async function savePuzzle(dateString, puzzleData) {
 }
 
 // Progress saving (combines date and username for the ID)
-export async function saveProgress(dateString, username, progressData) {
+export async function saveProgress(
+  dateString: string,
+  username: string,
+  progressData: ProgressData
+): Promise<boolean> {
   if (!username) return false;
   const id = `${dateString}_${username}`;
   
-  const payload = {
+  const payload: ProgressPayload = {
     username,
     dateString,
     ...progressData,
@@ -66,7 +95,7 @@ export async function saveProgress(dateString, username, progressData) {
 }
 
 // Fetch user progress to resume game
-export async function getProgress(dateString, username) {
+export async function getProgress(dateString: string, username: string): Promise<ProgressPayload | null> {
   if (!username) return null;
   const id = `${dateString}_${username}`;
   
@@ -79,7 +108,7 @@ export async function getProgress(dateString, username) {
     const docRef = doc(db, 'progress', id);
     const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
-      return docSnap.data();
+      return docSnap.data() as ProgressPayload;
     }
     return null;
   } catch (error) {
@@ -89,9 +118,9 @@ export async function getProgress(dateString, username) {
 }
 
 // Leaderboard logic
-export async function saveScore(dateString, username, timeSeconds) {
+export async function saveScore(dateString: string, username: string, timeSeconds: number): Promise<boolean> {
   const id = `${dateString}_${username}`;
-  const payload = {
+  const payload: LeaderboardScore = {
     username,
     dateString,
     timeSeconds,
@@ -100,7 +129,7 @@ export async function saveScore(dateString, username, timeSeconds) {
 
   if (USE_LOCAL) {
     const existingStr = localStorage.getItem(`leaderboard_${dateString}`) || '[]';
-    const existing = JSON.parse(existingStr);
+    const existing: LeaderboardScore[] = JSON.parse(existingStr);
     const index = existing.findIndex(s => s.username === username);
     if (index >= 0) {
       if (timeSeconds < existing[index].timeSeconds) {
@@ -122,10 +151,10 @@ export async function saveScore(dateString, username, timeSeconds) {
   }
 }
 
-export async function getLeaderboard(dateString) {
+export async function getLeaderboard(dateString: string): Promise<LeaderboardScore[]> {
   if (USE_LOCAL) {
     const existingStr = localStorage.getItem(`leaderboard_${dateString}`) || '[]';
-    const existing = JSON.parse(existingStr);
+    const existing: LeaderboardScore[] = JSON.parse(existingStr);
     // Sort ascending by time
     existing.sort((a, b) => a.timeSeconds - b.timeSeconds);
     return existing.slice(0, 10);
@@ -139,9 +168,9 @@ export async function getLeaderboard(dateString) {
       limit(10)
     );
     const querySnapshot = await getDocs(q);
-    const scores = [];
+    const scores: LeaderboardScore[] = [];
     querySnapshot.forEach((doc) => {
-      scores.push(doc.data());
+      scores.push(doc.data() as LeaderboardScore);
     });
     return scores;
   } catch (error) {

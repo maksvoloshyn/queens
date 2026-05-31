@@ -1,27 +1,29 @@
-<script setup>
+<script setup lang="ts">
 import { ref } from 'vue';
 import Board from '../components/Board.vue';
 import { generatePuzzle } from '../engine/puzzleGenerator';
+import type { Puzzle } from '../engine/puzzleGenerator';
 import { savePuzzle } from '../services/db';
 import { MAX_BOARD_SIZE } from '../engine/gameLogic';
+import type { Board as BoardType } from '../engine/gameLogic';
 
-const puzzleGrid = ref([]);
-const puzzleData = ref(null);
-const targetDate = ref('');
-const isSaved = ref(false);
+const puzzleGrid = ref<BoardType>([]);
+const puzzleData = ref<Puzzle | null>(null);
+const targetDate = ref<string>('');
+const isSaved = ref<boolean>(false);
 
 function generate() {
   isSaved.value = false;
   const puzzle = generatePuzzle();
   if (puzzle) {
     puzzleData.value = puzzle;
-    const grid = [];
+    const grid: BoardType = [];
     for (let rowIndex = 0; rowIndex < MAX_BOARD_SIZE; rowIndex++) {
-      const row = [];
+      const row: BoardType[number] = [];
       for (let columnIndex = 0; columnIndex < MAX_BOARD_SIZE; columnIndex++) {
         row.push({
           state: 0,
-          regionId: puzzle.regions[rowIndex][columnIndex],
+          regionId: puzzle.regions[rowIndex]?.[columnIndex] ?? 0,
           isError: false
         });
       }

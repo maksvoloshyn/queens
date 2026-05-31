@@ -1,13 +1,14 @@
-import { ref, computed } from 'vue';
+import { ref, computed, Ref } from 'vue';
 import { getDailyPuzzle, saveProgress, getProgress, saveScore } from '../services/db';
 import { CELL_STATE, getInvalidQueens, checkWinCondition, MAX_BOARD_SIZE } from '../engine/gameLogic';
+import type { Board } from '../engine/gameLogic';
 
-export function useGameState(dateString, usernameRef) {
-  const grid = ref([]);
+export function useGameState(dateString: string, usernameRef: Ref<string>) {
+  const grid = ref<Board>([]);
   const isLoading = ref(true);
   const isSolved = ref(false);
   const timerSeconds = ref(0);
-  let timerInterval = null;
+  let timerInterval: ReturnType<typeof setInterval> | null = null;
 
   async function initGame() {
     isLoading.value = true;
@@ -22,10 +23,10 @@ export function useGameState(dateString, usernameRef) {
       const puzzle = await getDailyPuzzle(dateString);
 
       if (puzzle && puzzle.regions) {
-        const newGrid = [];
+        const newGrid: Board = [];
 
         for (let rowIndex = 0; rowIndex < MAX_BOARD_SIZE; rowIndex++) {
-          const row = [];
+          const row: Board[number] = [];
           for (let columnIndex = 0; columnIndex < MAX_BOARD_SIZE; columnIndex++) {
             row.push({
               state: CELL_STATE.EMPTY,
@@ -72,7 +73,10 @@ export function useGameState(dateString, usernameRef) {
 
     for (let rowIndex = 0; rowIndex < MAX_BOARD_SIZE; rowIndex++) {
       for (let columnIndex = 0; columnIndex < MAX_BOARD_SIZE; columnIndex++) {
-        grid.value[rowIndex][columnIndex].isError = invalidSet.has(`${rowIndex},${columnIndex}`);
+        const cell = grid.value[rowIndex]?.[columnIndex];
+        if (cell) {
+          cell.isError = invalidSet.has(`${rowIndex},${columnIndex}`);
+        }
       }
     }
   }
@@ -87,9 +91,10 @@ export function useGameState(dateString, usernameRef) {
     }
   }
 
-  function handleUpdateCell(rowIndex, columnIndex) {
+  function handleUpdateCell(rowIndex: number, columnIndex: number) {
     if (isSolved.value) return;
-    const cell = grid.value[rowIndex][columnIndex];
+    const cell = grid.value[rowIndex]?.[columnIndex];
+    if (!cell) return;
 
     if (cell.state === CELL_STATE.EMPTY) cell.state = CELL_STATE.CROSS;
     else if (cell.state === CELL_STATE.CROSS) cell.state = CELL_STATE.QUEEN;
@@ -98,9 +103,10 @@ export function useGameState(dateString, usernameRef) {
     processMove();
   }
 
-  function handleSwipeCell(rowIndex, columnIndex) {
+  function handleSwipeCell(rowIndex: number, columnIndex: number) {
     if (isSolved.value) return;
-    const cell = grid.value[rowIndex][columnIndex];
+    const cell = grid.value[rowIndex]?.[columnIndex];
+    if (!cell) return;
 
     if (cell.state === CELL_STATE.EMPTY) {
       cell.state = CELL_STATE.CROSS;
@@ -117,7 +123,7 @@ export function useGameState(dateString, usernameRef) {
 
     if (checkWinCondition(grid.value)) {
       isSolved.value = true;
-      clearInterval(timerInterval);
+      if (timerInterval) clearInterval(timerInterval);
       saveProgress(dateString, usernameRef.value, {
         grid: grid.value,
         timerSeconds: timerSeconds.value,

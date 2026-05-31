@@ -1,12 +1,12 @@
-<script setup>
+<script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import Board from '../components/Board.vue';
 import Leaderboard from '../components/Leaderboard.vue';
 import { getDailyDateString } from '../utils/date';
 import { useGameState } from '../composables/useGameState';
 
-const username = ref(localStorage.getItem('queens_username') || '');
-const showSetup = ref(!username.value);
+const username = ref<string>(localStorage.getItem('queens_username') || '');
+const showSetup = ref<boolean>(!username.value);
 const dateString = getDailyDateString();
 
 const { 
@@ -25,12 +25,12 @@ onMounted(() => {
   }
 });
 
-function saveUserSetup(e) {
+function saveUserSetup(e: Event) {
   e.preventDefault();
+  const target = e.target as HTMLFormElement;
+  const input = new FormData(target).get('username');
 
-  const input = new FormData(e.target).get('username');
-
-  if (input && input.trim()) {
+  if (input && typeof input === 'string' && input.trim()) {
     username.value = input.trim();
     localStorage.setItem('queens_username', username.value);
     showSetup.value = false;

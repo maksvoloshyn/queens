@@ -1,12 +1,13 @@
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { getLeaderboard } from '../services/db';
+import type { LeaderboardScore } from '../services/db';
 
-const props = defineProps({
-  dateString: String,
-});
+const props = defineProps<{
+  dateString: string;
+}>();
 
-const scores = ref([]);
+const scores = ref<LeaderboardScore[]>([]);
 const isLoading = ref(true);
 
 onMounted(async () => {
@@ -16,7 +17,7 @@ onMounted(async () => {
   }
 });
 
-function formatTime(seconds) {
+function formatTime(seconds: number): string {
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = seconds % 60;
 

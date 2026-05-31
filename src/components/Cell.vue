@@ -1,16 +1,20 @@
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue';
+import type { Board, CellState } from '../engine/gameLogic';
 
-const props = defineProps({
-  state: Number, // 0: empty, 1: X, 2: Queen
-  regionId: Number,
-  isError: Boolean, // if the queen here violates a rule
-  grid: Array, // full 2D grid array (optional)
-  rowIndex: Number, // current row index (optional)
-  columnIndex: Number, // current column index (optional)
-});
+const props = defineProps<{
+  state: CellState;
+  regionId: number;
+  isError: boolean;
+  grid?: Board;
+  rowIndex?: number;
+  columnIndex?: number;
+}>();
 
-const emit = defineEmits(['cell-pointer-down', 'cell-pointer-enter']);
+const emit = defineEmits<{
+  (e: 'cell-pointer-down', event: PointerEvent): void;
+  (e: 'cell-pointer-enter'): void;
+}>();
 
 const regionColors = [
   '#fecaca', // 0: Pastel Red
@@ -38,10 +42,10 @@ const borderStyle = computed(() => {
   const boardSize = props.grid.length;
 
   // Determine borders by checking adjacent cells to outline the region boundaries
-  const isTopBorderThick = rowIndex === 0 || props.grid[rowIndex - 1][columnIndex].regionId !== regionId;
-  const isBottomBorderThick = rowIndex === boardSize - 1 || props.grid[rowIndex + 1][columnIndex].regionId !== regionId;
-  const isLeftBorderThick = columnIndex === 0 || props.grid[rowIndex][columnIndex - 1].regionId !== regionId;
-  const isRightBorderThick = columnIndex === boardSize - 1 || props.grid[rowIndex][columnIndex + 1].regionId !== regionId;
+  const isTopBorderThick = rowIndex === 0 || props.grid[rowIndex - 1]?.[columnIndex]?.regionId !== regionId;
+  const isBottomBorderThick = rowIndex === boardSize - 1 || props.grid[rowIndex + 1]?.[columnIndex]?.regionId !== regionId;
+  const isLeftBorderThick = columnIndex === 0 || props.grid[rowIndex]?.[columnIndex - 1]?.regionId !== regionId;
+  const isRightBorderThick = columnIndex === boardSize - 1 || props.grid[rowIndex]?.[columnIndex + 1]?.regionId !== regionId;
 
   const thickBorder = '1px solid rgba(0, 0, 0, 0.4)';
   const thinBorder = '1px solid rgba(0, 0, 0, 0.08)';

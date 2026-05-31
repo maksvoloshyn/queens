@@ -1,23 +1,27 @@
-<script setup>
+<script setup lang="ts">
 import { ref } from 'vue';
 import Cell from './Cell.vue';
+import type { Board } from '../engine/gameLogic';
 
-const props = defineProps({
-  grid: Array, // 2D array of { state, regionId, isError }
-});
+const props = defineProps<{
+  grid: Board;
+}>();
 
-const emit = defineEmits(['update-cell', 'swipe-cell']);
+const emit = defineEmits<{
+  (e: 'update-cell', rowIndex: number, columnIndex: number): void;
+  (e: 'swipe-cell', rowIndex: number, columnIndex: number): void;
+}>();
 
 const isSwiping = ref(false);
-const lastSwipedCell = ref(null);
+const lastSwipedCell = ref<string | null>(null);
 
 const startX = ref(0);
 const startY = ref(0);
-const startRow = ref(null);
-const startCol = ref(null);
+const startRow = ref<number | null>(null);
+const startCol = ref<number | null>(null);
 const hasMoved = ref(false);
 
-function handlePointerDown(e, rowIndex, columnIndex) {
+function handlePointerDown(e: PointerEvent, rowIndex: number, columnIndex: number) {
   isSwiping.value = true;
   hasMoved.value = false;
   startX.value = e.clientX;
@@ -27,29 +31,33 @@ function handlePointerDown(e, rowIndex, columnIndex) {
   lastSwipedCell.value = `${rowIndex},${columnIndex}`;
 }
 
-function handlePointerMove(e) {
+function handlePointerMove(e: PointerEvent) {
   if (!isSwiping.value) return;
 
   const dist = Math.hypot(e.clientX - startX.value, e.clientY - startY.value);
   if (!hasMoved.value && dist > 6) {
     hasMoved.value = true;
-    emit('swipe-cell', startRow.value, startCol.value);
+    if (startRow.value !== null && startCol.value !== null) {
+      emit('swipe-cell', startRow.value, startCol.value);
+    }
   }
 
   const element = document.elementFromPoint(e.clientX, e.clientY);
   if (!element) return;
 
-  const cellEl = element.closest('[data-row]');
+  const cellEl = element.closest('[data-row]') as HTMLElement | null;
   if (cellEl) {
-    const rowIndex = parseInt(cellEl.dataset.row, 10);
-    const columnIndex = parseInt(cellEl.dataset.col, 10);
+    const rowIndex = parseInt(cellEl.dataset.row || '0', 10);
+    const columnIndex = parseInt(cellEl.dataset.col || '0', 10);
     const cellKey = `${rowIndex},${columnIndex}`;
 
     if (lastSwipedCell.value !== cellKey) {
       lastSwipedCell.value = cellKey;
       if (!hasMoved.value) {
         hasMoved.value = true;
-        emit('swipe-cell', startRow.value, startCol.value);
+        if (startRow.value !== null && startCol.value !== null) {
+          emit('swipe-cell', startRow.value, startCol.value);
+        }
       }
       emit('swipe-cell', rowIndex, columnIndex);
     }
