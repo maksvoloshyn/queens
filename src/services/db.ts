@@ -1,5 +1,5 @@
 import { db } from './firebase';
-import { doc, setDoc, getDoc, collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
+import { doc, setDoc, getDoc, getDocs, collection, query, where, orderBy, limit, runTransaction } from 'firebase/firestore';
 import type { Board } from '../engine/gameLogic';
 import { generatePuzzle } from '../engine/puzzleGenerator';
 
@@ -8,6 +8,13 @@ const USE_LOCAL = import.meta.env.VITE_USE_LOCAL_EMULATOR === 'true';
 export interface PuzzleData {
   regions: number[][];
   solution?: { rowIndex: number; columnIndex: number }[];
+}
+
+export interface LeaderboardScore {
+  username: string;
+  dateString: string;
+  timeSeconds: number;
+  timestamp: string;
 }
 
 export interface ProgressData {
@@ -22,14 +29,7 @@ export interface ProgressPayload extends ProgressData {
   lastUpdated: string;
 }
 
-export interface LeaderboardScore {
-  username: string;
-  dateString: string;
-  timeSeconds: number;
-  timestamp: string;
-}
-
-// Helper to generate a puzzle deterministically with fallback retry seeds
+// Generate puzzle deterministically based on date seed with fallback retries
 function generateWithRetry(dateString: string): PuzzleData | null {
   let attempts = 0;
   let puzzle = null;
@@ -47,14 +47,85 @@ function generateWithRetry(dateString: string): PuzzleData | null {
   return null;
 }
 
-// Fetch the daily puzzle from Firestore or LocalStorage. If not found, autogenerates and saves it.
-export async function getDailyPuzzle(dateString: string): Promise<PuzzleData | null> {
-  if (USE_LOCAL) {
-    const data = localStorage.getItem(`puzzle_${dateString}`);
-    if (data) {
-      return JSON.parse(data) as PuzzleData;
+// Reconstruct a 2D regions puzzle from a flattened 1D Firestore layout
+function reconstructPuzzle(data: any): PuzzleData {
+  let regions2D: number[][] = [];
+  if (data.regionsFlattened) {
+    const flat = data.regionsFlattened as number[];
+    for (let i = 0; i < flat.length; i += 8) {
+      regions2D.push(flat.slice(i, i + 8));
     }
+  } else if (data.regions) {
+    regions2D = data.regions as number[][];
+  }
+  return {
+    regions: regions2D,
+    solution: data.solution
+  };
+}
 
+// Poll Firestore waiting for another client to finish daily puzzle generation
+async function pollForDailyPuzzle(docRef: any, dateString: string): Promise<PuzzleData | null> {
+  console.log("Another client is generating the daily puzzle. Polling...");
+  let retries = 0;
+  while (retries < 10) {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    try {
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        const data = docSnap.data() as any;
+        if (data && (data.status === 'ready' || data.regionsFlattened || data.regions)) {
+          const puzzleData = reconstructPuzzle(data);
+          localStorage.setItem(`puzzle_${dateString}`, JSON.stringify(puzzleData));
+          return puzzleData;
+        }
+      }
+    } catch (pollError) {
+      console.warn("Error during polling, will retry:", pollError);
+    }
+    retries++;
+  }
+  console.warn("Polling timed out.");
+  return null;
+}
+
+// Generate the daily puzzle deterministically and save it to Firestore
+async function generateAndSaveDailyPuzzle(docRef: any, dateString: string): Promise<PuzzleData | null> {
+  const puzzleData = generateWithRetry(dateString);
+  if (!puzzleData) return null;
+
+  try {
+    await setDoc(docRef, {
+      regionsFlattened: puzzleData.regions.flat(),
+      solution: puzzleData.solution || [],
+      status: 'ready',
+      generating: false,
+      completedAt: new Date().toISOString()
+    });
+    localStorage.setItem(`puzzle_${dateString}`, JSON.stringify(puzzleData));
+    return puzzleData;
+  } catch (saveError) {
+    console.error("Error saving daily puzzle to Firestore:", saveError);
+    return null;
+  }
+}
+
+// Fetch puzzle with atomic transaction-based generation check
+export async function getDailyPuzzle(dateString: string): Promise<PuzzleData | null> {
+  // Check local cache first for instant loading
+  const cachedData = localStorage.getItem(`puzzle_${dateString}`);
+  if (cachedData) {
+    try {
+      const parsed = JSON.parse(cachedData) as PuzzleData;
+      if (parsed && parsed.regions) {
+        return parsed;
+      }
+    } catch (e) {
+      console.warn("Error parsing cached puzzle:", e);
+    }
+  }
+
+  if (USE_LOCAL) {
     const puzzleData = generateWithRetry(dateString);
     if (puzzleData) {
       localStorage.setItem(`puzzle_${dateString}`, JSON.stringify(puzzleData));
@@ -63,101 +134,47 @@ export async function getDailyPuzzle(dateString: string): Promise<PuzzleData | n
     return null;
   }
 
-  try {
-    const docRef = doc(db, 'puzzles', dateString);
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-      return docSnap.data() as PuzzleData;
-    }
+  const docRef = doc(db, 'puzzles', dateString);
 
-    // Autogenerate and save to Firestore
-    const puzzleData = generateWithRetry(dateString);
-    if (puzzleData) {
-      try {
-        await setDoc(docRef, puzzleData);
-      } catch (saveError) {
-        console.error("Error saving autogenerated puzzle to Firestore:", saveError);
+  try {
+    const txResult = await runTransaction(db, async (transaction) => {
+      const docSnap = await transaction.get(docRef);
+      if (docSnap.exists()) {
+        const data = docSnap.data() as any;
+        if (data && (data.status === 'ready' || data.regionsFlattened || data.regions)) {
+          return { status: 'ready', data: reconstructPuzzle(data) };
+        }
+        if (data && data.status === 'generating') {
+          return { status: 'generating' };
+        }
       }
-      return puzzleData;
+
+      // Mark the puzzle as generating to prevent concurrency issues
+      transaction.set(docRef, {
+        status: 'generating',
+        generating: true,
+        createdAt: new Date().toISOString()
+      });
+      return { status: 'needs_generation' };
+    });
+
+    if (txResult.status === 'ready' && txResult.data) {
+      localStorage.setItem(`puzzle_${dateString}`, JSON.stringify(txResult.data));
+      return txResult.data;
     }
-    return null;
-  } catch (error) {
-    console.error("Error fetching daily puzzle from Firestore:", error);
-    console.log("Offline or database error. Generating offline fallback puzzle...");
-    return generateWithRetry(dateString);
-  }
-}
 
-// Admin: Save a puzzle to Firestore or LocalStorage
-export async function savePuzzle(dateString: string, puzzleData: PuzzleData): Promise<boolean> {
-  if (USE_LOCAL) {
-    localStorage.setItem(`puzzle_${dateString}`, JSON.stringify(puzzleData));
-    return true;
-  }
-
-  try {
-    await setDoc(doc(db, 'puzzles', dateString), puzzleData);
-    return true;
-  } catch (error) {
-    console.error("Error saving puzzle:", error);
-    return false;
-  }
-}
-
-// Progress saving (combines date and username for the ID)
-export async function saveProgress(
-  dateString: string,
-  username: string,
-  progressData: ProgressData
-): Promise<boolean> {
-  if (!username) return false;
-  const id = `${dateString}_${username}`;
-
-  const payload: ProgressPayload = {
-    username,
-    dateString,
-    ...progressData,
-    lastUpdated: new Date().toISOString()
-  };
-
-  if (USE_LOCAL) {
-    localStorage.setItem(`progress_${id}`, JSON.stringify(payload));
-    return true;
-  }
-
-  try {
-    await setDoc(doc(db, 'progress', id), payload, { merge: true });
-    return true;
-  } catch (error) {
-    console.error("Error saving progress:", error);
-    return false;
-  }
-}
-
-// Fetch user progress to resume game
-export async function getProgress(dateString: string, username: string): Promise<ProgressPayload | null> {
-  if (!username) return null;
-  const id = `${dateString}_${username}`;
-
-  if (USE_LOCAL) {
-    const data = localStorage.getItem(`progress_${id}`);
-    return data ? JSON.parse(data) : null;
-  }
-
-  try {
-    const docRef = doc(db, 'progress', id);
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-      return docSnap.data() as ProgressPayload;
+    if (txResult.status === 'generating') {
+      return await pollForDailyPuzzle(docRef, dateString);
     }
-    return null;
+
+    return await generateAndSaveDailyPuzzle(docRef, dateString);
   } catch (error) {
-    console.error("Error fetching progress:", error);
+    console.error("Firestore error in getDailyPuzzle:", error);
     return null;
   }
 }
 
-// Leaderboard logic
+// Save user completion score to Firebase or LocalStorage
 export async function saveScore(dateString: string, username: string, timeSeconds: number): Promise<boolean> {
   const id = `${dateString}_${username}`;
   const payload: LeaderboardScore = {
@@ -169,11 +186,16 @@ export async function saveScore(dateString: string, username: string, timeSecond
 
   if (USE_LOCAL) {
     const existingStr = localStorage.getItem(`leaderboard_${dateString}`) || '[]';
-    const existing: LeaderboardScore[] = JSON.parse(existingStr);
-    const index = existing.findIndex(s => s.username === username);
-    if (index >= 0) {
-      if (timeSeconds < existing[index].timeSeconds) {
-        existing[index] = payload;
+    let existing: LeaderboardScore[] = [];
+    try {
+      existing = JSON.parse(existingStr);
+    } catch {
+      existing = [];
+    }
+    const idx = existing.findIndex(s => s.username === username);
+    if (idx >= 0) {
+      if (timeSeconds < existing[idx].timeSeconds) {
+        existing[idx] = payload;
       }
     } else {
       existing.push(payload);
@@ -184,20 +206,40 @@ export async function saveScore(dateString: string, username: string, timeSecond
 
   try {
     await setDoc(doc(db, 'leaderboard', id), payload, { merge: true });
+    // Invalidate session storage cache
+    sessionStorage.removeItem(`leaderboard_${dateString}`);
     return true;
   } catch (error) {
-    console.error("Error saving score:", error);
+    console.error("Error saving score to Firestore:", error);
     return false;
   }
 }
 
+// Fetch daily leaderboard (ordered by fast completion time)
 export async function getLeaderboard(dateString: string): Promise<LeaderboardScore[]> {
   if (USE_LOCAL) {
     const existingStr = localStorage.getItem(`leaderboard_${dateString}`) || '[]';
-    const existing: LeaderboardScore[] = JSON.parse(existingStr);
-    // Sort ascending by time
+    let existing: LeaderboardScore[] = [];
+    try {
+      existing = JSON.parse(existingStr);
+    } catch {
+      existing = [];
+    }
     existing.sort((a, b) => a.timeSeconds - b.timeSeconds);
     return existing.slice(0, 10);
+  }
+
+  const cacheKey = `leaderboard_${dateString}`;
+  try {
+    const cachedStr = sessionStorage.getItem(cacheKey);
+    if (cachedStr) {
+      const cached = JSON.parse(cachedStr);
+      if (Date.now() - cached.fetchedAt < 30000) {
+        return cached.scores as LeaderboardScore[];
+      }
+    }
+  } catch (e) {
+    console.warn("Error reading leaderboard cache:", e);
   }
 
   try {
@@ -212,9 +254,48 @@ export async function getLeaderboard(dateString: string): Promise<LeaderboardSco
     querySnapshot.forEach((doc) => {
       scores.push(doc.data() as LeaderboardScore);
     });
+
+    try {
+      sessionStorage.setItem(cacheKey, JSON.stringify({
+        scores,
+        fetchedAt: Date.now()
+      }));
+    } catch (e) {
+      console.warn("Error caching leaderboard:", e);
+    }
+
     return scores;
   } catch (error) {
-    console.error("Error fetching leaderboard:", error);
+    console.error("Error fetching leaderboard from Firestore:", error);
     return [];
   }
+}
+
+// Pure Local storage for saving user in-progress states
+export function saveLocalProgress(dateString: string, username: string, progressData: ProgressData): boolean {
+  if (!username) return false;
+  const id = `${dateString}_${username}`;
+  const payload: ProgressPayload = {
+    username,
+    dateString,
+    ...progressData,
+    lastUpdated: new Date().toISOString()
+  };
+  localStorage.setItem(`progress_${id}`, JSON.stringify(payload));
+  return true;
+}
+
+// Pure Local storage for getting user in-progress states
+export function getLocalProgress(dateString: string, username: string): ProgressPayload | null {
+  if (!username || !dateString) return null;
+  const id = `${dateString}_${username}`;
+  const localData = localStorage.getItem(`progress_${id}`);
+  if (localData) {
+    try {
+      return JSON.parse(localData) as ProgressPayload;
+    } catch (e) {
+      console.warn("Error parsing local progress:", e);
+    }
+  }
+  return null;
 }

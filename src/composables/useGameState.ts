@@ -1,5 +1,6 @@
 import { ref, computed, Ref } from 'vue';
-import { getDailyPuzzle, saveProgress, getProgress, saveScore } from '../services/db';
+import { getDailyPuzzle, saveScore, getLeaderboard, saveLocalProgress, getLocalProgress } from '../services/db';
+import type { LeaderboardScore } from '../services/db';
 import { CELL_STATE, getInvalidQueens, checkWinCondition, MAX_BOARD_SIZE } from '../engine/gameLogic';
 import type { Board } from '../engine/gameLogic';
 
@@ -8,45 +9,85 @@ export function useGameState(dateString: string, usernameRef: Ref<string>) {
   const isLoading = ref(true);
   const isSolved = ref(false);
   const timerSeconds = ref(0);
+  const leaderboardScores = ref<LeaderboardScore[]>([]);
   let timerInterval: ReturnType<typeof setInterval> | null = null;
 
   async function initGame() {
     isLoading.value = true;
+    if (timerInterval) clearInterval(timerInterval);
+    timerSeconds.value = 0;
+    isSolved.value = false;
 
-    const progress = await getProgress(dateString, usernameRef.value);
+    // 2. Fetch daily puzzle and leaderboard concurrently
+    const [puzzle, leaderboard] = await Promise.all([
+      getDailyPuzzle(dateString),
+      getLeaderboard(dateString)
+    ]);
 
-    if (progress && progress.grid) {
-      grid.value = progress.grid;
-      timerSeconds.value = progress.timerSeconds || 0;
-      isSolved.value = progress.isSolved || false;
-    } else {
-      const puzzle = await getDailyPuzzle(dateString);
+    leaderboardScores.value = leaderboard;
 
-      if (puzzle && puzzle.regions) {
-        const newGrid: Board = [];
+    // 4. Check if user name is in leaderboard, if it is, the puzzle is solved.
+    const hasSolved = leaderboard.some(s => s.username === usernameRef.value);
 
-        for (let rowIndex = 0; rowIndex < MAX_BOARD_SIZE; rowIndex++) {
-          const row: Board[number] = [];
-          for (let columnIndex = 0; columnIndex < MAX_BOARD_SIZE; columnIndex++) {
-            row.push({
-              state: CELL_STATE.EMPTY,
-              regionId: puzzle.regions[rowIndex][columnIndex],
-              isError: false
-            });
+    // Retrieve local progress (if any)
+    const localProgress = getLocalProgress(dateString, usernameRef.value);
+
+    if (puzzle && puzzle.regions) {
+      if (hasSolved) {
+        isSolved.value = true;
+        // If local progress exists, use it so we see custom queens and crosses
+        if (localProgress && localProgress.grid) {
+          grid.value = localProgress.grid;
+          timerSeconds.value = localProgress.timerSeconds;
+        } else {
+          // Fallback to solution from puzzle data
+          const newGrid: Board = [];
+          for (let rowIndex = 0; rowIndex < MAX_BOARD_SIZE; rowIndex++) {
+            const row: Board[number] = [];
+            for (let columnIndex = 0; columnIndex < MAX_BOARD_SIZE; columnIndex++) {
+              const isQueen = puzzle.solution?.some(
+                s => s.rowIndex === rowIndex && s.columnIndex === columnIndex
+              );
+              row.push({
+                state: isQueen ? CELL_STATE.QUEEN : CELL_STATE.EMPTY,
+                regionId: puzzle.regions[rowIndex][columnIndex],
+                isError: false
+              });
+            }
+            newGrid.push(row);
           }
-          newGrid.push(row);
-        }
-        grid.value = newGrid;
-      } else {
-        console.warn("No puzzle found for today. Need to generate one in /preview.");
-      }
-    }
+          grid.value = newGrid;
 
-    if (grid.value.length > 0) {
-      updateErrors();
-      if (!isSolved.value) {
+          // Set timer to completion time from leaderboard
+          const userScore = leaderboard.find(s => s.username === usernameRef.value);
+          timerSeconds.value = userScore ? userScore.timeSeconds : 0;
+        }
+      } else {
+        // Active play: load local progress if it exists, otherwise initialize empty board
+        if (localProgress && localProgress.grid) {
+          grid.value = localProgress.grid;
+          timerSeconds.value = localProgress.timerSeconds;
+        } else {
+          const newGrid: Board = [];
+          for (let rowIndex = 0; rowIndex < MAX_BOARD_SIZE; rowIndex++) {
+            const row: Board[number] = [];
+            for (let columnIndex = 0; columnIndex < MAX_BOARD_SIZE; columnIndex++) {
+              row.push({
+                state: CELL_STATE.EMPTY,
+                regionId: puzzle.regions[rowIndex][columnIndex],
+                isError: false
+              });
+            }
+            newGrid.push(row);
+          }
+          grid.value = newGrid;
+        }
+
+        updateErrors();
         startTimer();
       }
+    } else {
+      console.warn("No puzzle found for today.");
     }
 
     isLoading.value = false;
@@ -56,9 +97,7 @@ export function useGameState(dateString: string, usernameRef: Ref<string>) {
     if (timerInterval) clearInterval(timerInterval);
     timerInterval = setInterval(() => {
       timerSeconds.value++;
-      if (timerSeconds.value % 10 === 0) {
-        persistProgress();
-      }
+      persistProgress();
     }, 1000);
   }
 
@@ -70,7 +109,6 @@ export function useGameState(dateString: string, usernameRef: Ref<string>) {
 
   function updateErrors() {
     const invalidSet = getInvalidQueens(grid.value);
-
     for (let rowIndex = 0; rowIndex < MAX_BOARD_SIZE; rowIndex++) {
       for (let columnIndex = 0; columnIndex < MAX_BOARD_SIZE; columnIndex++) {
         const cell = grid.value[rowIndex]?.[columnIndex];
@@ -83,7 +121,7 @@ export function useGameState(dateString: string, usernameRef: Ref<string>) {
 
   function persistProgress() {
     if (usernameRef.value && !isSolved.value) {
-      saveProgress(dateString, usernameRef.value, {
+      saveLocalProgress(dateString, usernameRef.value, {
         grid: grid.value,
         timerSeconds: timerSeconds.value,
         isSolved: false
@@ -92,7 +130,7 @@ export function useGameState(dateString: string, usernameRef: Ref<string>) {
   }
 
   function handleUpdateCell(rowIndex: number, columnIndex: number) {
-    if (isSolved.value) return;
+    if (isSolved.value) return; // Locked: user cannot solve it again
     const cell = grid.value[rowIndex]?.[columnIndex];
     if (!cell) return;
 
@@ -104,7 +142,7 @@ export function useGameState(dateString: string, usernameRef: Ref<string>) {
   }
 
   function handleSwipeCell(rowIndex: number, columnIndex: number) {
-    if (isSolved.value) return;
+    if (isSolved.value) return; // Locked: user cannot solve it again
     const cell = grid.value[rowIndex]?.[columnIndex];
     if (!cell) return;
 
@@ -117,19 +155,26 @@ export function useGameState(dateString: string, usernameRef: Ref<string>) {
     }
   }
 
-  function processMove() {
+  async function processMove() {
     updateErrors();
     persistProgress();
 
     if (checkWinCondition(grid.value)) {
       isSolved.value = true;
       if (timerInterval) clearInterval(timerInterval);
-      saveProgress(dateString, usernameRef.value, {
+
+      // Save score to Firebase Leaderboard
+      await saveScore(dateString, usernameRef.value, timerSeconds.value);
+
+      // Save final solved progress locally so we retain all custom crosses & queens on reload
+      saveLocalProgress(dateString, usernameRef.value, {
         grid: grid.value,
         timerSeconds: timerSeconds.value,
         isSolved: true
       });
-      saveScore(dateString, usernameRef.value, timerSeconds.value);
+
+      // Refetch updated leaderboard to display immediately
+      leaderboardScores.value = await getLeaderboard(dateString);
     }
   }
 
@@ -138,6 +183,7 @@ export function useGameState(dateString: string, usernameRef: Ref<string>) {
     isLoading,
     isSolved,
     formattedTime,
+    leaderboardScores,
     initGame,
     handleUpdateCell,
     handleSwipeCell
