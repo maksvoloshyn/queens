@@ -96,6 +96,11 @@ function saveUserSetup(e: Event) {
     display: flex;
     flex-direction: column;
     align-items: center;
+    touch-action: manipulation;
+}
+
+.board-wrapper {
+    touch-action: manipulation;
 }
 
 .header {

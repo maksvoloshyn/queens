@@ -127,5 +127,6 @@ function handlePointerUp() {
 }
 .row {
     display: flex;
+    touch-action: none;
 }
 </style>

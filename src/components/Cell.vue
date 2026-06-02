@@ -80,6 +80,8 @@ const borderStyle = computed(() => {
         :class="{ 'has-error': isError }"
         @pointerdown.prevent="emit('cell-pointer-down', $event)"
         @pointerenter.prevent="emit('cell-pointer-enter')"
+        @click.prevent
+        @dblclick.prevent
     >
         <div v-if="state === 1" class="mark cross">✕</div>
         <div v-else-if="state === 2" class="mark queen">👑</div>
@@ -101,6 +103,7 @@ const borderStyle = computed(() => {
         transform 0.1s,
         background-color 0.2s;
     box-sizing: border-box;
+    touch-action: none;
 }
 
 .cell.has-error {
