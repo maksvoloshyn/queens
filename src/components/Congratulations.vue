@@ -85,12 +85,10 @@ onMounted(() => {
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
-    animation: gradientShift 4s ease infinite;
 }
 
 .emoji-bounce {
     display: inline-block;
-    animation: bounce 1.2s ease infinite alternate;
     -webkit-text-fill-color: initial; /* Ensure emoji color is rendered and not gradient-clipped */
 }
 
