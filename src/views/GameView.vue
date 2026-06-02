@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import Board from '../components/Board.vue';
-import Leaderboard from '../components/Leaderboard.vue';
+import Congratulations from '../components/Congratulations.vue';
 import { getDailyDateString } from '../utils/date';
 import { useGameState } from '../composables/useGameState';
 
@@ -80,12 +80,11 @@ function saveUserSetup(e: Event) {
                 @update-cell="handleUpdateCell"
                 @swipe-cell="handleSwipeCell"
             />
-            <div v-if="isSolved" class="success-message">
-                <h2>Magnificent! 🎉</h2>
-                <p>You solved today's puzzle in {{ formattedTime }}.</p>
-
-                <Leaderboard :date-string="dateString" />
-            </div>
+            <Congratulations
+                v-if="isSolved"
+                :formatted-time="formattedTime"
+                :date-string="dateString"
+            />
         </div>
     </div>
 </template>
@@ -181,27 +180,5 @@ function saveUserSetup(e: Event) {
     margin-top: 3rem;
     text-align: center;
     color: #94a3b8;
-}
-
-.success-message {
-    margin-top: 2rem;
-    text-align: center;
-    animation: slideUp 0.5s ease-out;
-}
-
-.success-message h2 {
-    color: #34d399;
-    margin-bottom: 0.5rem;
-}
-
-@keyframes slideUp {
-    from {
-        opacity: 0;
-        transform: translateY(20px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
 }
 </style>
