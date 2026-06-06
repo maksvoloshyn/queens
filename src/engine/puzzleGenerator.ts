@@ -26,17 +26,70 @@ function createPRNG(seedString: string) {
     };
 }
 
+export function hasUniqueSolution(regions: number[][]): boolean {
+    const N = regions.length;
+    let solutionsCount = 0;
+
+    const colUsed = new Array(N).fill(false);
+    const regionUsed = new Array(N).fill(false);
+    const prevColInRow = new Array(N).fill(-1);
+
+    function solve(rowIndex: number) {
+        if (rowIndex === N) {
+            solutionsCount++;
+            return;
+        }
+
+        for (let colIndex = 0; colIndex < N; colIndex++) {
+            if (colUsed[colIndex]) continue;
+
+            const regionId = regions[rowIndex][colIndex];
+            if (regionUsed[regionId]) continue;
+
+            // Adjacency check: only needs to check the queen in the immediate previous row
+            if (rowIndex > 0) {
+                const prevCol = prevColInRow[rowIndex - 1];
+                if (Math.abs(colIndex - prevCol) <= 1) continue;
+            }
+
+            // Choose
+            colUsed[colIndex] = true;
+            regionUsed[regionId] = true;
+            prevColInRow[rowIndex] = colIndex;
+
+            solve(rowIndex + 1);
+
+            // Backtrack
+            colUsed[colIndex] = false;
+            regionUsed[regionId] = false;
+
+            if (solutionsCount > 1) return; // early exit
+        }
+    }
+
+    solve(0);
+    return solutionsCount === 1;
+}
+
 export function generatePuzzle(seed?: string): Puzzle | null {
     const random = seed ? createPRNG(seed) : Math.random;
-    const queens = placeQueens(random);
-    if (!queens) return null;
 
-    const regions = growRegions(queens, random);
+    let attempts = 0;
+    while (attempts < 2000) {
+        attempts++;
+        const queens = placeQueens(random);
+        if (!queens) continue;
 
-    return {
-        regions,
-        solution: queens,
-    };
+        const regions = growRegions(queens, random);
+        if (hasUniqueSolution(regions)) {
+            return {
+                regions,
+                solution: queens,
+            };
+        }
+    }
+
+    return null;
 }
 
 function placeQueens(random: () => number): SimpleQueenCoord[] | null {
