@@ -388,3 +388,56 @@ export function getLocalProgress(
 
     return null;
 }
+
+export interface CongratulationsOption {
+    text: string;
+    emoji: string;
+}
+
+export const congratulationsOptions: CongratulationsOption[] = [
+    { text: 'Magnificent', emoji: '🎉' },
+    { text: 'Outstanding', emoji: '🌟' },
+    { text: 'Brilliant', emoji: '🏆' },
+    { text: 'Fantastic', emoji: '🚀' },
+    { text: 'Splendid', emoji: '💎' },
+    { text: 'Spectacular', emoji: '✨' },
+    { text: 'Incredible', emoji: '🌈' },
+    { text: 'Phenomenal', emoji: '☄️' },
+    { text: 'Superb', emoji: '👏' },
+    { text: 'Majestic', emoji: '👑' },
+    { text: 'Astonishing', emoji: '⚡' },
+    { text: 'Masterful', emoji: '🧠' },
+    { text: 'Sensational', emoji: '🌟' },
+];
+
+export function getSavedCongrats(
+    dateString: string,
+): CongratulationsOption | null {
+    if (!dateString) return null;
+    const localData = localStorage.getItem(`congrats_${dateString}`);
+    if (localData) {
+        try {
+            return JSON.parse(localData) as CongratulationsOption;
+        } catch (e) {
+            console.warn('Error parsing local congrats:', e);
+        }
+    }
+    return null;
+}
+
+export function saveCongrats(
+    dateString: string,
+    option: CongratulationsOption,
+): void {
+    if (!dateString) return;
+    localStorage.setItem(`congrats_${dateString}`, JSON.stringify(option));
+}
+
+export function regenerateCongrats(dateString: string): CongratulationsOption {
+    const randomIndex = Math.floor(
+        Math.random() * congratulationsOptions.length,
+    );
+    const option = congratulationsOptions[randomIndex];
+    saveCongrats(dateString, option);
+    return option;
+}

@@ -1,41 +1,21 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref } from 'vue';
 import Leaderboard from './Leaderboard.vue';
+import { getSavedCongrats, regenerateCongrats } from '../services/db';
+import type { CongratulationsOption } from '../services/db';
 
-defineProps<{
+const props = defineProps<{
     formattedTime: string;
     dateString: string;
 }>();
 
-interface CongratulationsOption {
-    text: string;
-    emoji: string;
-}
+const loadCongrats = (): CongratulationsOption => {
+    const saved = getSavedCongrats(props.dateString);
+    if (saved) return saved;
+    return regenerateCongrats(props.dateString);
+};
 
-const congratulationsOptions: CongratulationsOption[] = [
-    { text: 'Magnificent', emoji: '🎉' },
-    { text: 'Outstanding', emoji: '🌟' },
-    { text: 'Brilliant', emoji: '🏆' },
-    { text: 'Fantastic', emoji: '🚀' },
-    { text: 'Splendid', emoji: '💎' },
-    { text: 'Spectacular', emoji: '✨' },
-    { text: 'Incredible', emoji: '🌈' },
-    { text: 'Phenomenal', emoji: '☄️' },
-    { text: 'Superb', emoji: '👏' },
-    { text: 'Majestic', emoji: '👑' },
-    { text: 'Astonishing', emoji: '⚡' },
-    { text: 'Masterful', emoji: '🧠' },
-    { text: 'Sensational', emoji: '🌟' },
-];
-
-const selectedOption = ref<CongratulationsOption>(congratulationsOptions[0]);
-
-onMounted(() => {
-    const randomIndex = Math.floor(
-        Math.random() * congratulationsOptions.length,
-    );
-    selectedOption.value = congratulationsOptions[randomIndex];
-});
+const selectedOption = ref<CongratulationsOption>(loadCongrats());
 </script>
 
 <template>

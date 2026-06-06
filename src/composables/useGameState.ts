@@ -5,6 +5,7 @@ import {
     getLeaderboard,
     saveLocalProgress,
     getLocalProgress,
+    regenerateCongrats,
 } from '../services/db';
 import type { LeaderboardScore } from '../services/db';
 import {
@@ -195,6 +196,9 @@ export function useGameState(dateString: string, usernameRef: Ref<string>) {
         if (checkWinCondition(grid.value)) {
             isSolved.value = true;
             if (timerInterval) clearInterval(timerInterval);
+
+            // Regenerate the congratulations message for this date upon successful solution
+            regenerateCongrats(dateString);
 
             // Save score to Firebase Leaderboard
             await saveScore(dateString, usernameRef.value, timerSeconds.value);
