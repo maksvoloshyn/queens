@@ -10,6 +10,7 @@ import {
     orderBy,
     limit,
     runTransaction,
+    DocumentReference,
 } from 'firebase/firestore';
 import type { Board } from '../engine/gameLogic';
 import { generatePuzzle } from '../engine/puzzleGenerator';
@@ -19,6 +20,16 @@ const USE_LOCAL = import.meta.env.VITE_USE_LOCAL_EMULATOR === 'true';
 export interface PuzzleData {
     regions: number[][];
     solution?: { rowIndex: number; columnIndex: number }[];
+}
+
+export interface FirestorePuzzleData {
+    regionsFlattened?: number[];
+    regions?: number[][];
+    solution?: { rowIndex: number; columnIndex: number }[];
+    status?: string;
+    generating?: boolean;
+    createdAt?: string;
+    completedAt?: string;
 }
 
 export interface LeaderboardScore {
@@ -60,15 +71,15 @@ function generateWithRetry(dateString: string): PuzzleData | null {
 }
 
 // Reconstruct a 2D regions puzzle from a flattened 1D Firestore layout
-function reconstructPuzzle(data: any): PuzzleData {
+function reconstructPuzzle(data: FirestorePuzzleData): PuzzleData {
     let regions2D: number[][] = [];
     if (data.regionsFlattened) {
-        const flat = data.regionsFlattened as number[];
+        const flat = data.regionsFlattened;
         for (let i = 0; i < flat.length; i += 8) {
             regions2D.push(flat.slice(i, i + 8));
         }
     } else if (data.regions) {
-        regions2D = data.regions as number[][];
+        regions2D = data.regions;
     }
     return {
         regions: regions2D,
@@ -78,7 +89,7 @@ function reconstructPuzzle(data: any): PuzzleData {
 
 // Poll Firestore waiting for another client to finish daily puzzle generation
 async function pollForDailyPuzzle(
-    docRef: any,
+    docRef: DocumentReference,
     dateString: string,
 ): Promise<PuzzleData | null> {
     console.log('Another client is generating the daily puzzle. Polling...');
@@ -90,7 +101,7 @@ async function pollForDailyPuzzle(
         try {
             const docSnap = await getDoc(docRef);
             if (docSnap.exists()) {
-                const data = docSnap.data() as any;
+                const data = docSnap.data() as FirestorePuzzleData;
 
                 if (
                     data &&
@@ -120,7 +131,7 @@ async function pollForDailyPuzzle(
 
 // Generate the daily puzzle deterministically and save it to Firestore
 async function generateAndSaveDailyPuzzle(
-    docRef: any,
+    docRef: DocumentReference,
     dateString: string,
 ): Promise<PuzzleData | null> {
     const puzzleData = generateWithRetry(dateString);
@@ -184,7 +195,7 @@ export async function getDailyPuzzle(
             const docSnap = await transaction.get(docRef);
 
             if (docSnap.exists()) {
-                const data = docSnap.data() as any;
+                const data = docSnap.data() as FirestorePuzzleData;
 
                 if (
                     data &&
@@ -245,9 +256,9 @@ export async function saveScore(
     if (USE_LOCAL) {
         const existingStr =
             localStorage.getItem(`leaderboard_${dateString}`) || '[]';
-        let existing: LeaderboardScore[] = [];
+        let existing: LeaderboardScore[];
         try {
-            existing = JSON.parse(existingStr);
+            existing = JSON.parse(existingStr) as LeaderboardScore[];
         } catch {
             existing = [];
         }
@@ -284,10 +295,10 @@ export async function getLeaderboard(
     if (USE_LOCAL) {
         const existingStr =
             localStorage.getItem(`leaderboard_${dateString}`) || '[]';
-        let existing: LeaderboardScore[] = [];
+        let existing: LeaderboardScore[];
 
         try {
-            existing = JSON.parse(existingStr);
+            existing = JSON.parse(existingStr) as LeaderboardScore[];
         } catch {
             existing = [];
         }
